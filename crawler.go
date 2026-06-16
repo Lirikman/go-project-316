@@ -246,8 +246,9 @@ func ParsUrl(ctx context.Context, opts Options) Page {
 	}
 	// находим все ссылки на странице
 	var links []string
+	var brokenLinks []BadLink
 	links = findLinks(docNew, url)
-	// Проверяем каждую ссылку
+	// проверяем каждую ссылку
 	for _, link := range links {
 		// пропуск пустых ссылок или якорей (#)
 		if link == "" || strings.HasPrefix(link, "#") {
@@ -256,7 +257,7 @@ func ParsUrl(ctx context.Context, opts Options) Page {
 		res := CheckLink(link)
 		emptyLink := BadLink{}
 		if res != emptyLink {
-			report.BrokenLinks = append(report.BrokenLinks, res)
+			brokenLinks = append(brokenLinks, res)
 		}
 	}
 	// формирование итогового отчета о странице
@@ -267,6 +268,7 @@ func ParsUrl(ctx context.Context, opts Options) Page {
 		HTTPStatus:   resp.StatusCode,
 		Status:       http.StatusText(resp.StatusCode),
 		SEO:          pageSE0,
+		BrokenLinks:  brokenLinks,
 		DiscoveredAT: currentTime,
 	}
 	return report
@@ -296,7 +298,7 @@ func filterDomain(targetDomain string, links []string) []string {
 		}
 		// проверяем, совпадает ли домен или является ли поддоменом
 		host := strings.ToLower(parsedURL.Host)
-		if host == targetDomain {
+		if host == targetDomain || strings.Contains(host, targetDomain) {
 			matchedURLs = append(matchedURLs, u)
 		}
 	}
