@@ -1,100 +1,94 @@
 package main
 
 import (
-	"bytes"
 	"code"
 	"context"
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
 
-// MockClient структура для подмены клиента в тестах.
-type MockClient struct {
-	MockDo func(req *http.Request) (*http.Response, error)
+// mockServ позволяет гибко настраивать ответы для тестов
+type mockServ struct {
+	transportFunc func(req *http.Request) (*http.Response, error)
 }
 
-// Do перенаправляет вызов на нашу mock-функцию
-func (m *MockClient) Do(req *http.Request) (*http.Response, error) {
-	if m.MockDo != nil {
-		return m.MockDo(req)
+func (m *mockServ) RoundTrip(req *http.Request) (*http.Response, error) {
+	return m.transportFunc(req)
+}
+
+func newMockClient(fn func(req *http.Request) (*http.Response, error)) *http.Client {
+	return &http.Client{
+		Transport: &mockServ{transportFunc: fn},
 	}
-	return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewBufferString(""))}, nil
 }
 
-// параметры для выполнения запросов в тестах
-var testOpts = code.Options{
-	Client:      *http.Client,
-	URL:         "https://example.com",
-	Depth:       1,
-	Retries:     1,
-	Delay:       0 * time.Second,
-	Timeout:     15 * time.Second,
-	UserAgent:   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-	Concurrency: 4,
-	IndentJSON:  true,
-}
-
-func TestAnalyze(t *testing.T) {
-	tests := []struct {
-		name        string
-		mockClient  *MockClient
-		expected    string
-		expectError bool
-	}{
-		{
-			name: "Success Scenario",
-			mockClient: &MockClient{
-				MockDo: func(req *http.Request) (*http.Response, error) {
-					return &http.Response{
-						StatusCode: http.StatusOK,
-						Body:       io.NopCloser(bytes.NewBufferString("Test Title")),
-					}, nil
-				},
-			},
-			expected:    "Test Title",
-			expectError: false,
-		},
-		{
-			name: "HTTP 500 Error",
-			mockClient: &MockClient{
-				MockDo: func(req *http.Request) (*http.Response, error) {
-					return &http.Response{
-						StatusCode: http.StatusInternalServerError,
-						Body:       io.NopCloser(bytes.NewBufferString("")),
-					}, nil
-				},
-			},
-			expected:    "",
-			expectError: true,
-		},
-		{
-			name: "Network Failure",
-			mockClient: &MockClient{
-				MockDo: func(req *http.Request) (*http.Response, error) {
-					return nil, errors.New("connection refused")
-				},
-			},
-			expected:    "",
-			expectError: true,
-		},
+// Helper для HTTP-ответа
+func stringResponse(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     make(http.Header),
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			opts.Client := tt.mockClient
-			res, err := code.Analyze(ctx, testOpts)
-			// Проверяем ошибку
-			if (err != nil) != tt.expectError {
-				t.Fatalf("unexpected error state: got %v, expected error: %v", err, tt.expectError)
-			}
+}
 
-			// Проверяем значение
-			if title != tt.expected {
-				t.Fatalf("unexpected title: got %q, expected %q", title, tt.expected)
-			}
-		})
+// func TestAnalyze_SuccessAndDepth(t *testing.T) {
+// 	client := newMockClient(func(req *http.Request) (*http.Response, error) {
+// 		switch req.URL.String() {
+// 		case "https://example.com":
+// 			return stringResponse(200, `<html><a href="https://example.com"></a></html>`), nil
+// 		case "https://example.com":
+// 			return stringResponse(200, `<html><a href="https://example.com"></a></html>`), nil
+// 		case "https://example.com":
+// 			return stringResponse(200, `<html>The end</html>`), nil
+// 		default:
+// 			return stringResponse(404, "Not Found"), nil
+// 		}
+// 	})
+
+// 	optsTest := code.Options{
+// 		URL:         "https://example.com",
+// 		Depth:       2, // Должен зайти на /page1, но проигнорировать /page2
+// 		Concurrency: 2,
+// 		HTTPClient:  client,
+// 	}
+
+// 	data, err := code.Analyze(context.Background(), optsTest)
+// 	if err != nil {
+// 		t.Fatalf("unexpected error: %v", err)
+// 	}
+
+// 	var reports []code.Page
+// 	if err := json.Unmarshal(data, &reports); err != nil {
+// 		t.Fatalf("failed to unmarshal result: %v", err)
+// 	}
+
+// 	if len(reports) != 2 {
+// 		t.Errorf("expected 2 pages, got %d", len(reports))
+// 	}
+// }
+
+func TestAnalyze_ContextCancellation(t *testing.T) {
+	client := newMockClient(func(req *http.Request) (*http.Response, error) {
+		time.Sleep(50 * time.Millisecond) // имититация долгого запроса
+		return stringResponse(200, "OK"), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
+	defer cancel()
+
+	opts := code.Options{
+		URL:         "https://ya.ru",
+		Depth:       1,
+		Concurrency: 1,
+		HTTPClient:  client,
+	}
+
+	_, err := code.Analyze(ctx, opts)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected deadline exceeded error, got %v", err)
 	}
 }

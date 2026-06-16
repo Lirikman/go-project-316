@@ -84,6 +84,10 @@ func main() {
 					fmt.Printf("Поле: %s, Ошибка: тег '%s' не выполнен\n", err.Field(), err.Tag())
 				}
 			}
+			// проверяем корректность ввода параметра depth
+			if cmd.Int("depth") < 1 {
+				return fmt.Errorf("the depth parameter must be greater than 0")
+			}
 			// получаем параметры запроса из флагов
 			opt := code.Options{
 				URL:         url,
@@ -95,6 +99,8 @@ func main() {
 				Concurrency: cmd.Int("workers"),
 				IndentJSON:  cmd.Bool("indent-json"),
 			}
+			// res := code.ParsUrl(ctx, opt)
+			// fmt.Println(res)
 			// выполняем запрос
 			res, err := code.Analyze(ctx, opt)
 			// выводим результаты
