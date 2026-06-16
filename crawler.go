@@ -272,6 +272,37 @@ func ParsUrl(ctx context.Context, opts Options) Page {
 	return report
 }
 
+// получение случайной ссылки из списка
+func randomLink(links []string) string {
+	// получаем случайный индекс на ссылку
+	randIdx := rand.Intn(len(links))
+	// берём элемент по индексу
+	randUrl := links[randIdx]
+	return randUrl
+}
+
+// получение списка сайтов определённого домена
+func filterDomain(targetDomain string, links []string) []string {
+	var matchedURLs []string
+	for _, u := range links {
+		parsedURL, err := url.Parse(u)
+		if err != nil {
+			log.Printf("parsing error %s: %v\n", u, err)
+			continue
+		}
+		// убедимся, что URL содержит хост
+		if parsedURL.Host == "" {
+			continue
+		}
+		// проверяем, совпадает ли домен или является ли поддоменом
+		host := strings.ToLower(parsedURL.Host)
+		if host == targetDomain {
+			matchedURLs = append(matchedURLs, u)
+		}
+	}
+	return matchedURLs
+}
+
 // функция анализа сайта с заданными параметрами
 func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	// переменная для хранения итогового отчёта
@@ -323,16 +354,18 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 		Pages:       []Page{},
 	}
 	// задаём текущее показание depth
-	currentDepth := opts.Depth - 1
+	currentDepth := 1
 	// проходим по найденным ссылкам в глубину
-	for i := currentDepth; i >= 0; i-- {
+	for i := currentDepth; i <= opts.Depth; i++ {
 		// находим все ссылки на странице
 		urls := findLinks(doc, linksVisited.urls[len(linksVisited.urls)-1])
-		fmt.Println("Найденные ссылки: ", urls)
-		// получаем случайный индекс на ссылку
-		randIdx := rand.Intn(len(urls))
-		// берём элемент по индексу
-		randUrl := urls[randIdx]
+		// fmt.Println("Найденные ссылки: ", urls)
+		// фильтруем ссылки по домену
+		u, _ := url.Parse(linksVisited.urls[len(linksVisited.urls)-1])
+		hostName := u.Hostname()
+		domainUrls := filterDomain(hostName, urls)
+		// получаем случайную ссылку
+		randUrl := randomLink(domainUrls)
 		// задаём параметры поиска страницы
 		optsPage := opts
 		optsPage.URL = randUrl
@@ -345,8 +378,8 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 		if !reflect.DeepEqual(parsPage, emptyPage) {
 			report.Pages = append(report.Pages, parsPage)
 		}
-		// уменьшаем значение показателья depth на 1
-		currentDepth--
+		// увеличиваем значение показателя depth на 1
+		currentDepth++
 	}
 	// cериалиализация отчета в JSON с заданным параметром indent-json
 	var serialErr error
