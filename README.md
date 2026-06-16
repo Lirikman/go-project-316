@@ -11,14 +11,23 @@ USAGE:
    hexlet-go-crawler [global options] <url>
 
 GLOBAL OPTIONS:
+
    --depth int          crawl depth (default: 10)
+   
    --retries int        number of retries for failed requests (default: 1)
+   
    --delay duration     delay between requests (example: 200ms, 1s) (default: 0s)
+   
    --timeout duration   per-request timeout (default: 15s)
+   
    --rps int            limit requests per second (overrides delay) (default: 0)
+   
    --user-agent string  custom user agent
+   
    --workers int        number of concurrent workers (default: 4)
+   
    --indent-json        formatting output in json
+   
    --help, -h           show help
 
 ### Requirements
