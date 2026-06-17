@@ -86,7 +86,12 @@ func main() {
 			}
 			// проверяем корректность ввода параметра depth
 			if cmd.Int("depth") < 1 {
-				return fmt.Errorf("the depth parameter must be greater than 0")
+				return fmt.Errorf("the 'depth' parameter must be greater than 0")
+			}
+
+			// проверяем корректность ввода параметра workers
+			if cmd.Int("workers") < 1 {
+				return fmt.Errorf("the 'workers' parameter must be greater than 0")
 			}
 			// получаем параметры запроса из флагов
 			opt := code.Options{
@@ -94,16 +99,17 @@ func main() {
 				Depth:       cmd.Int("depth"),
 				Retries:     cmd.Int("retries"),
 				Delay:       cmd.Duration("delay"),
+				RPS:         cmd.Int("rps"),
 				Timeout:     cmd.Duration("timeout"),
 				UserAgent:   cmd.String("user-agent"),
 				Concurrency: cmd.Int("workers"),
 				IndentJSON:  cmd.Bool("indent-json"),
 			}
-			// res := code.ParsUrl(ctx, opt)
+			// res := code.ParsPageNew(ctx, opt.URL, opt.Depth, opt)
 			// fmt.Println(res)
 			// выполняем запрос
 			res, err := code.Analyze(ctx, opt)
-			// выводим результаты
+			// // выводим результаты
 			if err == nil {
 				fmt.Println(string(res))
 			}
