@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -44,7 +45,7 @@ type Page struct {
 	Depth        int       `json:"depth"`
 	HTTPStatus   int       `json:"http_status"`
 	Status       string    `json:"status"`
-	LinksFound   []string  `json:"links_found,omitempty"`
+	LinksFound   []string  `json:"-"`
 	BrokenLinks  []BadLink `json:"broken_links,omitempty"`
 	SEO          SEO       `json:"seo"`
 	DiscoveredAT string    `json:"discovered_at"`
@@ -168,7 +169,7 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	// ограничиваем доступ к разделяемым данным и предотвращаем 'состояние гонки'
 	var mu sync.Mutex
 
-	// создаём переменную для сохранения посещений сайтов
+	// создаём и инициализируем карту для сохранения посещённых сайтов
 	visited := make(map[string]bool)
 
 	// настраиваем глобальный лимитер частоты запросов RPS
@@ -207,31 +208,33 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 					}
 				}
 
-				// парсинг страницы
+				// парсинг страницы по параметрам текущего задания
 				pageRes := ParsPage(ctx, t.url, t.depth, opts)
-				// фильтруем полученные ссылки по домену
-				u, _ := url.Parse(opts.URL)
-				hostName := u.Hostname()
-				domainUrls := filterDomain(hostName, pageRes.LinksFound)
 				// передаём результаты парсинга страницы в канал resultsChan
 				resultsChan <- pageRes
 
-				// если  параметр глубины позволяет, добавляем новые ссылки в очередь
+				// проверяем параметр depth b добавляем новые ссылки в очередь
 				if t.depth < opts.Depth && pageRes.Error == "" {
+					fmt.Println("Текущий показатель глубины: ", t.depth)
+					// фильтруем полученные ссылки по домену
+					u, _ := url.Parse(opts.URL)
+					hostName := u.Hostname()
+					domainUrls := filterDomain(hostName, pageRes.LinksFound)
+					// fmt.Println("Отфильтрованные страницы: ", domainUrls)
 					mu.Lock()
 					for _, link := range domainUrls {
 						// проверяем запись о посещении для данного url
 						if !visited[link] {
 							// добавляем запись о посещении
 							visited[link] = true
-							// увеличиваем счётчик ожиданий
+							// увеличиваем счётчик задач
 							wg.Add(1)
-							// отправляем новое задание
-							select {
-							case tasksChan <- Task{url: link, depth: t.depth + 1}:
-							default:
-								wg.Done()
-							}
+							// отправляем новое задание в отдельной горутине
+							go func(l string, d int) {
+								tasksChan <- Task{url: l, depth: d}
+							}(link, t.depth+1)
+							// прерываем цикл после первой успешной обработки
+							break
 						}
 					}
 					mu.Unlock()
@@ -290,13 +293,14 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	} else {
 		reportBytes, serialErr = json.Marshal(report)
 	}
-	// возвращаем результаты запроса
 	if serialErr != nil {
 		return nil, fmt.Errorf("report serialization error: %w", serialErr)
 	}
+	// возвращаем итоговый отчёт анализа сайта
 	return reportBytes, nil
 }
 
+// функция парсинга одной страницы
 func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Options) Page {
 	// создаём переменную для отчёта
 	var report Page
@@ -321,13 +325,9 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 			err = reqErr
 			continue
 		}
-		// //  дефолтного HTTP-клиента с таймаутом
-		// if opts.HTTPClient == nil {
-		// 	opts.HTTPClient = &http.Client{Timeout: opts.Timeout}
-		// }
-		// если user-agent не задан, задаём стандартный
-		if opts.UserAgent != "" {
-			req.Header.Set("User-Agent", opts.UserAgent)
+		// если user-agent на задан
+		if opts.UserAgent == "" {
+			req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 		}
 		// если код ответа успешный, то выходим из цикла
 		resp, err = opts.HTTPClient.Do(req)
@@ -339,7 +339,7 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 			resp.Body.Close()
 		}
 	}
-	// если появилась ошибка, то сохраняем её в отчёте
+	// если после всех попыток ошибка, то сохраняем её в отчёте
 	if err != nil {
 		report.Error = err.Error()
 		return report
@@ -382,14 +382,16 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 		// получаем значение атрибута href
 		href, exists := s.Attr("href")
 		if exists && href != "" {
+			// преобразуем относительные ссылки в абсолютные
 			baseURL, _ := url.Parse(targetURL)
 			absURL := resolveURL(baseURL, href)
 			links = append(links, absURL)
 		}
 	})
-	report.LinksFound = links
 	// проверяем каждую ссылку
 	var brokenLinks []BadLink
+	// создадим список битых ссылок
+	var wrongLinks []string
 	for _, link := range links {
 		// пропуск пустых ссылок или якорей (#)
 		if link == "" || strings.HasPrefix(link, "#") {
@@ -399,9 +401,15 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 		emptyLink := BadLink{}
 		if res != emptyLink {
 			brokenLinks = append(brokenLinks, res)
+			wrongLinks = append(wrongLinks, res.URL)
 		}
 	}
-
+	// сохраняем только не битые ссылки
+	for _, link := range links {
+		if !slices.Contains(wrongLinks, link) {
+			report.LinksFound = append(report.LinksFound, link)
+		}
+	}
 	// формирование итогового отчета о странице
 	currentTime := time.Now().Format(time.RFC3339)
 	report = Page{
@@ -410,8 +418,10 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 		HTTPStatus:   resp.StatusCode,
 		Status:       http.StatusText(resp.StatusCode),
 		SEO:          pageSE0,
+		LinksFound:   links,
 		BrokenLinks:  brokenLinks,
 		DiscoveredAT: currentTime,
 	}
+	// возвращаем отчёт о странице
 	return report
 }
