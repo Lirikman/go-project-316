@@ -215,7 +215,6 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 
 				// проверяем параметр depth b добавляем новые ссылки в очередь
 				if t.depth < opts.Depth && pageRes.Error == "" {
-					fmt.Println("Текущий показатель глубины: ", t.depth)
 					// фильтруем полученные ссылки по домену
 					u, _ := url.Parse(opts.URL)
 					hostName := u.Hostname()
