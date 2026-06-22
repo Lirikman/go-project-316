@@ -85,13 +85,32 @@ func main() {
 				}
 			}
 			// проверяем корректность ввода параметра depth
-			if cmd.Int("depth") < 1 {
+			if cmd.Int("depth") < 0 {
 				return fmt.Errorf("the 'depth' parameter must be greater than 0")
 			}
-
+			// проверяем корректность ввода параметра retries
+			if cmd.Int("retries") < 1 {
+				return fmt.Errorf("the 'retries' parameter must be greater than 0")
+			}
+			// проверяем корректность ввода парметра delay
+			if cmd.Duration("delay") < 0 {
+				return fmt.Errorf("the 'delay' parameter must be greater than 0 (example: 200ms, 1s)")
+			}
+			// проверяем корректность ввода пармета timeout
+			if cmd.Duration("timeout") < 0 {
+				return fmt.Errorf("the 'timeout' parameter must be greater than 0 (example: 200ms, 1s)")
+			}
+			// проверяем корректность ввода параметра rps
+			if cmd.Int("rps") < 0 {
+				return fmt.Errorf("the 'rps' parameter must be greater than 0")
+			}
 			// проверяем корректность ввода параметра workers
 			if cmd.Int("workers") < 1 {
 				return fmt.Errorf("the 'workers' parameter must be greater than 0")
+			}
+			//проверяем корректность ввода параметра IndentJSON
+			if cmd.Bool("indent-json") != true && cmd.Bool("indent-json") != false {
+				return fmt.Errorf("invalid value of the parameter 'indent-json', can only be true or false")
 			}
 			// получаем параметры запроса из флагов
 			opt := code.Options{
@@ -105,8 +124,6 @@ func main() {
 				Concurrency: cmd.Int("workers"),
 				IndentJSON:  cmd.Bool("indent-json"),
 			}
-			// res := code.ParsPageNew(ctx, opt.URL, opt.Depth, opt)
-			// fmt.Println(res)
 			// выполняем запрос
 			res, err := code.Analyze(ctx, opt)
 			// // выводим результаты

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -272,7 +273,7 @@ func TestCrawlerBrokenLink(t *testing.T) {
 	brokenLinks := results.Pages[0].BrokenLinks
 	count := len(brokenLinks)
 	if count != 1 {
-		t.Errorf("Expected one broken link and got it %d", count)
+		t.Errorf("Expected one broken link and got it %d - %v", count, brokenLinks)
 	}
 	// порверяем url бытой ссылки
 	wrongUrl := fmt.Sprintf("%s/contacts", mockServer.URL)
@@ -488,4 +489,171 @@ func TestRetriesAndDelay(t *testing.T) {
 	if duration < 100*time.Millisecond {
 		t.Errorf("Expected total duration to be at least 100ms due to delays, but took %v", duration)
 	}
+}
+
+func TestParseAsset_AllConditions(t *testing.T) {
+	// cчетчик для проверки работы кэша
+	var reqCount int32
+	// создаем mock-сервер
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&reqCount, 1)
+
+		switch r.URL.Path {
+		case "/logo.png":
+			w.Header().Set("Content-Length", "150")
+			w.WriteHeader(http.StatusOK)
+			w.Write(make([]byte, 150)) // тело совпадает с Content-Length
+
+		case "/app.js":
+			w.Header().Del("Content-Length") // удаляем заголовок Content-Length
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("console.log('hello');")) // длина 21 байт
+
+		case "/theme.css":
+			w.Header().Set("Content-Length", "45")
+			w.WriteHeader(http.StatusOK)
+			w.Write(make([]byte, 45))
+
+		case "/document.pdf":
+			w.Header().Set("Content-Length", "500")
+			w.WriteHeader(http.StatusOK)
+			w.Write(make([]byte, 500))
+
+		case "/error404.png":
+			w.WriteHeader(http.StatusNotFound)
+
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	// Инициализируем клиент и кэш
+	client := server.Client()
+	cache := code.NewAssetCache()
+
+	testOpts := code.Options{
+		HTTPClient:  client,
+		URL:         server.URL,
+		Depth:       2,
+		Timeout:     1 * time.Second,
+		RPS:         20,
+		UserAgent:   "TestBot/1.0",
+		Concurrency: 1,
+		IndentJSON:  true,
+	}
+
+	// таблица тестов для проверки типов и размеров
+	tests := []struct {
+		name         string
+		path         string
+		expectedType string
+		expectedSize int64
+		expectError  bool
+	}{
+		{
+			name:         "Image with Content-Length",
+			path:         "/logo.png",
+			expectedType: "image",
+			expectedSize: 150,
+			expectError:  false,
+		},
+		{
+			name:         "Script not Content-Length",
+			path:         "/app.js",
+			expectedType: "script",
+			expectedSize: 21,
+			expectError:  false,
+		},
+		{
+			name:         "Style with Content-Length",
+			path:         "/theme.css",
+			expectedType: "style",
+			expectedSize: 45,
+			expectError:  false,
+		},
+		{
+			name:         "Unknown type (other)",
+			path:         "/document.pdf",
+			expectedType: "other",
+			expectedSize: 500,
+			expectError:  false,
+		},
+		{
+			name:         "Server error (404 Not Found)",
+			path:         "/error404.png",
+			expectedType: "image",
+			expectedSize: 0,
+			expectError:  true,
+		},
+	}
+
+	// проверяем логику парсинга для каждого кейса
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			targetURL := server.URL + tt.path
+			asset, err := cache.ParseAsset(targetURL, testOpts)
+			if err != nil {
+				t.Fatalf("asset parsing error")
+			}
+
+			if asset.Type != tt.expectedType {
+				t.Errorf("expected %q type, but received %q type", tt.expectedType, asset.Type)
+			}
+
+			if asset.SizeBytes != tt.expectedSize {
+				t.Errorf("expected size %d, but received %d", tt.expectedSize, asset.SizeBytes)
+			}
+
+			if tt.expectError && asset.Error == "" {
+				t.Error("expected error, but field Err is empty")
+			}
+
+			if !tt.expectError && asset.Error != "" {
+				t.Errorf("the error was not expected, but was received: %s", asset.Error)
+			}
+		})
+	}
+
+	// проверяем работу кэша и отсутствие лишних запросов
+	t.Run("Checking caching (retrying)", func(t *testing.T) {
+		targetURL := server.URL + "/logo.png"
+
+		// фиксируем количество запросов перед тестом
+		initReq := atomic.LoadInt32(&reqCount)
+		// делаем несколько к одному и тому же ассету
+		for i := range 5 {
+			asset, err := cache.ParseAsset(targetURL, testOpts)
+			if err != nil {
+				t.Fatalf("asset parsing error")
+			}
+			if asset.SizeBytes != 150 || asset.Type != "image" {
+				t.Errorf("cached data is corrupted during iteration %d", i)
+			}
+		}
+
+		// количество запросов не должно увеличиться
+		curReq := atomic.LoadInt32(&reqCount)
+		if curReq != initReq {
+			t.Errorf("cache failed: %d new requests to server made", curReq-initReq)
+		}
+	})
+	// проверяем сетевую ошибку (несуществующий хост)
+	t.Run("Network error (server unavailable)", func(t *testing.T) {
+		invalidClient := &http.Client{Timeout: 10 * time.Millisecond}
+		testOpts.HTTPClient = invalidClient
+		// задаём некорректный URL
+		asset, err := cache.ParseAsset("http://localhost.localdomain", testOpts)
+		if err != nil {
+		}
+		if asset.SizeBytes != 0 {
+			t.Errorf("expected size 0, but got %d", asset.SizeBytes)
+		}
+		if asset.Error == "" {
+			t.Error("error was expected in the Err field")
+		}
+		if asset.Type != "other" {
+			t.Errorf("expected assert type - other, but got %s", asset.Type)
+		}
+	})
 }

@@ -51,7 +51,7 @@ type Page struct {
 type BadLink struct {
 	URL    string `json:"url"`
 	Status int    `json:"status_code,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Error  string `json:"error"`
 }
 
 // структуря для SEO-показателей страницы
@@ -310,21 +310,14 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 			continue
 		}
 		res := CheckLink(link, opts)
-		emptyLink := BadLink{}
-		if res != emptyLink {
+		emtyLink := BadLink{}
+		if res != emtyLink {
 			brokenLinks = append(brokenLinks, res)
 			wrongLinks = append(wrongLinks, res.URL)
 		}
 	}
 	// добавляем информацию в отчёт
 	report.BrokenLinks = brokenLinks
-	// находим ассеты на странице и добавляем информацию в отчёт
-	// assets, err := assetSearch(doc, targetURL, opts)
-	// if err != nil {
-	// 	report.Error = fmt.Sprintf("Error searching for assets: %v", err)
-	// }
-	// report.Assets = assets
-
 	// сохраняем только не битые ссылки
 	for _, link := range links {
 		if !slices.Contains(wrongLinks, link) {
@@ -336,7 +329,7 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 	if err != nil {
 		report.Error = fmt.Sprintf("asset link search error: %v", err)
 	}
-	// анализируем все ссылки аcсетов идобавляем информацию в отчёт
+	// анализируем все ссылки аcсетов и добавляем информацию в отчёт
 	cacheAssets := NewAssetCache()
 	for _, link := range assetsUrl {
 		asset, err := cacheAssets.ParseAsset(link, opts)
@@ -408,20 +401,20 @@ func resolveURL(base *url.URL, href string) string {
 
 // функция проверки ссылки на 'битость'
 func CheckLink(urlStr string, opt Options) BadLink {
-	wrongLink := BadLink{}
+	var wrongLink BadLink
 	client := &http.Client{
 		Timeout: opt.Timeout,
 	}
 	// сначала выполним HEAD запрос
 	req, err := http.NewRequest("HEAD", urlStr, nil)
 	if err != nil {
-		return BadLink{}
+		return BadLink{URL: urlStr, Error: fmt.Sprintf("error creating request HEAD: %s", err)}
 	}
 	// выполняем запрос
 	respHead, err := client.Do(req)
 	if err != nil {
 		wrongLink.URL = urlStr
-		wrongLink.Error = fmt.Sprintf("%v", err)
+		wrongLink.Error = fmt.Sprintf("Head: '%s': %v", urlStr, err)
 		return wrongLink
 	}
 	defer respHead.Body.Close()
@@ -429,8 +422,10 @@ func CheckLink(urlStr string, opt Options) BadLink {
 	if respHead.StatusCode == http.StatusMethodNotAllowed || respHead.StatusCode == http.StatusForbidden {
 		reqGet, err := http.NewRequest("GET", urlStr, nil)
 		if err != nil {
-			return BadLink{}
+			return BadLink{URL: urlStr, Error: fmt.Sprintf("error creating request GET: %s", err)}
 		}
+		// для экономии трафика запрашиваем только начало
+		reqGet.Header.Set("Range", "bytes=0-0")
 		// выполняем запрос
 		respGet, err := client.Do(reqGet)
 		if err != nil {
@@ -442,12 +437,15 @@ func CheckLink(urlStr string, opt Options) BadLink {
 		if respGet.StatusCode >= 400 {
 			wrongLink.URL = urlStr
 			wrongLink.Status = respGet.StatusCode
+			wrongLink.Error = http.StatusText(respGet.StatusCode)
 		}
 		return wrongLink
 	}
+	// проверяем статус код ответа
 	if respHead.StatusCode >= 400 {
 		wrongLink.URL = urlStr
 		wrongLink.Status = respHead.StatusCode
+		wrongLink.Error = http.StatusText(respHead.StatusCode)
 	}
 	return wrongLink
 }
@@ -491,7 +489,7 @@ func NewAssetCache() *CacheAsset {
 func (ca *CacheAsset) ParseAsset(targetURL string, opt Options) (*Asset, error) {
 	ca.mu.Lock()
 	// проверяем наличие ассета в кэше
-	if asset, exists := ca.cache[targetURL]; exists {
+	if asset, ok := ca.cache[targetURL]; ok {
 		ca.mu.Unlock()
 		return asset, nil
 	}
@@ -521,14 +519,15 @@ func (ca *CacheAsset) ParseAsset(targetURL string, opt Options) (*Asset, error) 
 		asset.Error = fmt.Sprintf("%v", err)
 		return ca.saveAndReturn(targetURL, asset), nil
 	}
-	defer resp.Body.Close()
 
+	// проверяем статус код ответа
 	if resp.StatusCode != http.StatusOK {
 		asset.SizeBytes = 0
 		asset.StatusCode = resp.StatusCode
 		asset.Error = fmt.Sprintf("%v", err)
 		return ca.saveAndReturn(targetURL, asset), nil
 	}
+	defer resp.Body.Close()
 	asset.StatusCode = resp.StatusCode
 	// пробуем получить размер из заголовка Content-Length
 	contentLengthStr := resp.Header.Get("Content-Length")
@@ -540,7 +539,7 @@ func (ca *CacheAsset) ParseAsset(targetURL string, opt Options) (*Asset, error) 
 		}
 	}
 
-	// если заголовка нет или он некорректен, читаем тело ответа
+	// если заголовка нет или он некорректный, читаем тело ответа
 	bytesBody, err := io.Copy(io.Discard, resp.Body)
 	if err != nil {
 		asset.SizeBytes = 0
@@ -548,11 +547,11 @@ func (ca *CacheAsset) ParseAsset(targetURL string, opt Options) (*Asset, error) 
 	} else {
 		asset.SizeBytes = bytesBody
 	}
-	// возвращаем информацию об ассете
+	//добавляем запись в кэш и возвращаем информацию об ассете
 	return ca.saveAndReturn(targetURL, asset), nil
 }
 
-// функция работы с кэшем ассетов - сохранение и получение ассета
+// функция работы с кэшем ассетов - сохранение и возврат ассета
 func (ac *CacheAsset) saveAndReturn(url string, asset *Asset) *Asset {
 	ac.mu.Lock()
 	defer ac.mu.Unlock()
@@ -620,41 +619,4 @@ func sarchAssertUrl(doc *goquery.Document, pageURL string) ([]string, error) {
 		}
 	})
 	return assetsUrl, nil
-}
-
-// функция получения параметров ассета
-func checkAsset(baseURL *url.URL, assetURL, assetType string, opt Options) Asset {
-	client := &http.Client{
-		Timeout: opt.Timeout,
-	}
-
-	parsedURL, err := url.Parse(assetURL)
-	if err != nil {
-		return Asset{URL: assetURL, Type: assetType, Error: "incorrect URL"}
-	}
-
-	// преобразуем относительные URL в абсолютные
-	absURL := baseURL.ResolveReference(parsedURL).String()
-
-	// пробуем сделать запрос HEAD
-	req, err := http.NewRequest("HEAD", absURL, nil)
-	if err != nil {
-		return Asset{URL: absURL, Type: assetType, Error: "error creating request"}
-	}
-
-	// если HEAD заблокирован, делаем GET с range
-	resp, err := client.Do(req)
-	if err != nil {
-		return Asset{URL: absURL, Type: assetType, SizeBytes: 0, Error: err.Error()}
-	}
-	defer resp.Body.Close()
-
-	size := max(resp.ContentLength, 0)
-
-	return Asset{
-		URL:        absURL,
-		Type:       assetType,
-		StatusCode: resp.StatusCode,
-		SizeBytes:  size,
-	}
 }
