@@ -274,7 +274,9 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 		}
 		// если тело ответа не пустое, то освобождаем ресурсы
 		if resp != nil {
-			resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 		}
 	}
 	// если после всех попыток ошибка, то сохраняем её в отчёте
@@ -284,7 +286,9 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 	}
 
 	// освобождаем ресурсы
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	// добавляем информацию в отчёт
 	report.HTTPStatus = resp.StatusCode
@@ -417,7 +421,9 @@ func CheckLink(urlStr string, opt Options) BadLink {
 		wrongLink.Error = fmt.Sprintf("Head: '%s': %v", urlStr, err)
 		return wrongLink
 	}
-	defer respHead.Body.Close()
+	defer func() {
+		_ = respHead.Body.Close()
+	}()
 	// если сервер запретил HEAD, пробуем GET
 	if respHead.StatusCode == http.StatusMethodNotAllowed || respHead.StatusCode == http.StatusForbidden {
 		reqGet, err := http.NewRequest("GET", urlStr, nil)
@@ -433,7 +439,9 @@ func CheckLink(urlStr string, opt Options) BadLink {
 			wrongLink.Error = fmt.Sprintf("Get: '%s': %v", urlStr, err)
 			return wrongLink
 		}
-		defer respGet.Body.Close()
+		defer func() {
+			_ = respGet.Body.Close()
+		}()
 		if respGet.StatusCode >= 400 {
 			wrongLink.URL = urlStr
 			wrongLink.Status = respGet.StatusCode
@@ -527,7 +535,9 @@ func (ca *CacheAsset) ParseAsset(targetURL string, opt Options) (*Asset, error) 
 		asset.Error = fmt.Sprintf("%v", err)
 		return ca.saveAndReturn(targetURL, asset), nil
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	asset.StatusCode = resp.StatusCode
 	// пробуем получить размер из заголовка Content-Length
 	contentLengthStr := resp.Header.Get("Content-Length")

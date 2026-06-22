@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -36,7 +37,10 @@ func NewMockServer() *httptest.Server {
 				<a href="https://external.com">External Link</a>
 			</body>
 			</html>`
-		fmt.Fprintln(w, structHtml)
+		if _, err := fmt.Fprintln(w, structHtml); err != nil {
+			log.Printf("Error writing HTML response: %v", err)
+			return
+		}
 	})
 
 	// страница 1-го уровня глубины
@@ -56,7 +60,10 @@ func NewMockServer() *httptest.Server {
 				<a href="/about/team">Our Team</a>
 			</body>
 			</html>`
-		fmt.Fprintln(w, structHtml)
+		if _, err := fmt.Fprintln(w, structHtml); err != nil {
+			log.Printf("Error writing HTML response: %v", err)
+			return
+		}
 	})
 
 	// страница 2-го уровня глубины
@@ -64,7 +71,10 @@ func NewMockServer() *httptest.Server {
 	mux.HandleFunc("/about/team", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, `<html><body><p>Some data</p><a href="/about/team/deep">Our Team</a></body></html>`)
+		if _, err := fmt.Fprintln(w, `<html><body><p>Some data</p><a href="/about/team/deep">Our Team</a></body></html>`); err != nil {
+			log.Printf("Error writing HTML response: %v", err)
+			return
+		}
 
 	})
 
@@ -72,8 +82,10 @@ func NewMockServer() *httptest.Server {
 	mux.HandleFunc("/about/team/deep", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, `<html><body><p>Last page</p></body></html>`)
-
+		if _, err := fmt.Fprintln(w, `<html><body><p>Last page</p></body></html>`); err != nil {
+			log.Printf("Error writing HTML response: %v", err)
+			return
+		}
 	})
 
 	// битый эндпоинт
@@ -133,7 +145,9 @@ func TestContextCancell(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		time.Sleep(200 * time.Millisecond)
-		w.Write([]byte(`<html><body>Slow Page</body></html>`))
+		if _, err := w.Write([]byte(`<html><body>Slow Page</body></html>`)); err != nil {
+			log.Printf("Error sending response body: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -414,12 +428,14 @@ func TestRetriesAndDelay(t *testing.T) {
 		// первые два запроса ломаются - 500
 		if currentRequest <= 2 {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Internal Server Error"))
+			if _, err := w.Write([]byte("Internal Server Error")); err != nil {
+				log.Printf("Failed to send error message: %v", err)
+			}
 			return
 		}
 		// третий запрос успешный - 200
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`<html>
+		if _, err := w.Write([]byte(`<html>
 							<head>
 								<meta charset="UTF-8">
 								<title>Test retries page</title>
@@ -428,7 +444,9 @@ func TestRetriesAndDelay(t *testing.T) {
 							<body>
 								<h1>Success after retries</h1>
 							</body>
-						</html>`))
+						</html>`)); err != nil {
+			log.Printf("Failed to send error message: %v", err)
+		}
 	}))
 
 	// останавливаем сервер после теста
@@ -502,22 +520,29 @@ func TestParseAsset_AllConditions(t *testing.T) {
 		case "/logo.png":
 			w.Header().Set("Content-Length", "150")
 			w.WriteHeader(http.StatusOK)
-			w.Write(make([]byte, 150)) // тело совпадает с Content-Length
+			if _, err := w.Write(make([]byte, 150)); err != nil { // тело совпадает с Content-Length
+				log.Printf("Failed to send buffer: %v", err)
+			}
 
 		case "/app.js":
 			w.Header().Del("Content-Length") // удаляем заголовок Content-Length
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("console.log('hello');")) // длина 21 байт
-
+			if _, err := w.Write([]byte("console.log('hello');")); err != nil { // длина 21 байт
+				log.Printf("Error sending JS script: %v", err)
+			}
 		case "/theme.css":
 			w.Header().Set("Content-Length", "45")
 			w.WriteHeader(http.StatusOK)
-			w.Write(make([]byte, 45))
+			if _, err := w.Write(make([]byte, 45)); err != nil {
+				log.Printf("Error sending 45-byte buffer: %v", err)
+			}
 
 		case "/document.pdf":
 			w.Header().Set("Content-Length", "500")
 			w.WriteHeader(http.StatusOK)
-			w.Write(make([]byte, 500))
+			if _, err := w.Write(make([]byte, 500)); err != nil {
+				log.Printf("Error sending 500-byte buffer: %v", err)
+			}
 
 		case "/error404.png":
 			w.WriteHeader(http.StatusNotFound)
@@ -645,6 +670,7 @@ func TestParseAsset_AllConditions(t *testing.T) {
 		// задаём некорректный URL
 		asset, err := cache.ParseAsset("http://localhost.localdomain", testOpts)
 		if err != nil {
+			t.Fatalf("asset parsing error: %v", err)
 		}
 		if asset.SizeBytes != 0 {
 			t.Errorf("expected size 0, but got %d", asset.SizeBytes)

@@ -109,7 +109,7 @@ func main() {
 				return fmt.Errorf("the 'workers' parameter must be greater than 0")
 			}
 			//проверяем корректность ввода параметра IndentJSON
-			if cmd.Bool("indent-json") != true && cmd.Bool("indent-json") != false {
+			if cmd.Bool("indent-json") && !cmd.Bool("indent-json") {
 				return fmt.Errorf("invalid value of the parameter 'indent-json', can only be true or false")
 			}
 			// получаем параметры запроса из флагов
