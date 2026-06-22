@@ -130,15 +130,16 @@ func TestCrawlerDepth(t *testing.T) {
 func TestContextCancell(t *testing.T) {
 	// cервер искусственно долго отвечает, чтобы нам успеть отменить контекст
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
 		time.Sleep(200 * time.Millisecond)
 		w.Write([]byte(`<html><body>Slow Page</body></html>`))
 	}))
 	defer server.Close()
 
-	opts := code.Options{
+	testOpts := code.Options{
 		URL:         server.URL,
 		Depth:       2,
-		Retries:     0,
+		Retries:     1,
 		Timeout:     2 * time.Second,
 		RPS:         10,
 		Concurrency: 1,
@@ -148,7 +149,7 @@ func TestContextCancell(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, err := code.Analyze(ctx, opts)
+	_, err := code.Analyze(ctx, testOpts)
 
 	// проверка на ошибку context deadline exceeded
 	if err == nil {
@@ -390,7 +391,7 @@ func TestRPSLimiter(t *testing.T) {
 	// расчёт минимальной продолжительности запроса
 	minDuration := time.Duration(сountPage-1) * (time.Second / time.Duration(testOpts.RPS))
 
-	// делаем небольшую скидку -10% на особенности планировщика и burst
+	// делаем небольшую скидку - 10% на особенности планировщика и burst
 	allowedDuration := minDuration - (100 * time.Millisecond)
 
 	if duration < allowedDuration {

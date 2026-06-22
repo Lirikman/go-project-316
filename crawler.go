@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,7 +19,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// параметры для выполнения запроса
+// структура параметров запроса
 type Options struct {
 	HTTPClient  *http.Client
 	URL         string
@@ -30,26 +33,18 @@ type Options struct {
 	IndentJSON  bool
 }
 
-// структуря для SEO-показателей страницы
-type SEO struct {
-	HasTitle       bool   `json:"has_title"`
-	Title          string `json:"title"`
-	HasDescription bool   `json:"has_description"`
-	Description    string `json:"description"`
-	HasH1          bool   `json:"has_h1"`
-}
-
 // структура отчёта одной страницы
 type Page struct {
 	URL          string    `json:"url"`
 	Depth        int       `json:"depth"`
 	HTTPStatus   int       `json:"http_status"`
 	Status       string    `json:"status"`
+	Error        string    `json:"error"`
+	SEO          SEO       `json:"seo"`
 	LinksFound   []string  `json:"-"`
 	BrokenLinks  []BadLink `json:"broken_links,omitempty"`
-	SEO          SEO       `json:"seo"`
+	Assets       []Asset   `json:"assets,omitempty"`
 	DiscoveredAT string    `json:"discovered_at"`
-	Error        string    `json:"error,omitempty"`
 }
 
 // структура 'битых' ссылок
@@ -59,7 +54,25 @@ type BadLink struct {
 	Error  string `json:"error,omitempty"`
 }
 
-// структура финального JSON-отчета с заданной глубиной
+// структуря для SEO-показателей страницы
+type SEO struct {
+	HasTitle       bool   `json:"has_title"`
+	Title          string `json:"title"`
+	HasDescription bool   `json:"has_description"`
+	Description    string `json:"description"`
+	HasH1          bool   `json:"has_h1"`
+}
+
+// структура для ассетов страницы
+type Asset struct {
+	URL        string `json:"url"`
+	Type       string `json:"type"`
+	StatusCode int    `json:"status_code"`
+	SizeBytes  int64  `json:"size_bytes"`
+	Error      string `json:"error"`
+}
+
+// структура финального JSON-отчета
 type ReportResult struct {
 	RootURL     string `json:"root_url"`
 	Depth       int    `json:"depth"`
@@ -71,83 +84,6 @@ type ReportResult struct {
 type Task struct {
 	url   string
 	depth int
-}
-
-// функция преобразования относительной ссылки в абсолютную
-func resolveURL(base *url.URL, href string) string {
-	u, err := url.Parse(href)
-	if err != nil {
-		return href
-	}
-	return base.ResolveReference(u).String()
-}
-
-// функция проверки ссылки на 'битость'
-func CheckLink(urlStr string) BadLink {
-	wrongLink := BadLink{}
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-	// сначала выполним HEAD запрос
-	req, err := http.NewRequest("HEAD", urlStr, nil)
-	if err != nil {
-		return BadLink{}
-	}
-	// выполняем запрос
-	respHead, err := client.Do(req)
-	if err != nil {
-		wrongLink.URL = urlStr
-		wrongLink.Error = fmt.Sprintf("%v", err)
-		return wrongLink
-	}
-	defer respHead.Body.Close()
-	// если сервер запретил HEAD, пробуем GET
-	if respHead.StatusCode == http.StatusMethodNotAllowed || respHead.StatusCode == http.StatusForbidden {
-		reqGet, err := http.NewRequest("GET", urlStr, nil)
-		if err != nil {
-			return BadLink{}
-		}
-		// выполняем запрос
-		respGet, err := client.Do(reqGet)
-		if err != nil {
-			wrongLink.URL = urlStr
-			wrongLink.Error = fmt.Sprintf("Get: '%s': %v", urlStr, err)
-			return wrongLink
-		}
-		defer respGet.Body.Close()
-		if respGet.StatusCode >= 400 {
-			wrongLink.URL = urlStr
-			wrongLink.Status = respGet.StatusCode
-		}
-		return wrongLink
-	}
-	if respHead.StatusCode >= 400 {
-		wrongLink.URL = urlStr
-		wrongLink.Status = respHead.StatusCode
-	}
-	return wrongLink
-}
-
-// функция фильтрации списка сайтов по домену
-func filterDomain(targetDomain string, links []string) []string {
-	var matchedURLs []string
-	for _, u := range links {
-		parsedURL, err := url.Parse(u)
-		if err != nil {
-			log.Printf("parsing error %s: %v\n", u, err)
-			continue
-		}
-		// убедимся, что URL содержит хост
-		if parsedURL.Host == "" {
-			continue
-		}
-		// проверяем, совпадает ли домен или является ли поддоменом
-		host := strings.ToLower(parsedURL.Host)
-		if host == targetDomain || strings.Contains(host, targetDomain) {
-			matchedURLs = append(matchedURLs, u)
-		}
-	}
-	return matchedURLs
 }
 
 // функция анализа сайта с заданными параметрами
@@ -213,13 +149,12 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 				// передаём результаты парсинга страницы в канал resultsChan
 				resultsChan <- pageRes
 
-				// проверяем параметр depth b добавляем новые ссылки в очередь
+				// проверяем параметр depth и добавляем новые ссылки в очередь
 				if t.depth < opts.Depth && pageRes.Error == "" {
 					// фильтруем полученные ссылки по домену
 					u, _ := url.Parse(opts.URL)
 					hostName := u.Hostname()
 					domainUrls := filterDomain(hostName, pageRes.LinksFound)
-					// fmt.Println("Отфильтрованные страницы: ", domainUrls)
 					mu.Lock()
 					for _, link := range domainUrls {
 						// проверяем запись о посещении для данного url
@@ -307,6 +242,10 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 	var resp *http.Response
 	var err error
 
+	// добавляем информацию в отчёт
+	report.URL = targetURL
+	report.Depth = currentDepth
+
 	// запускаем цикл повторных попыток - параметр retries
 	for i := 0; i <= opts.Retries; i++ {
 		// delay используем для паузы между попытками
@@ -324,9 +263,9 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 			err = reqErr
 			continue
 		}
-		// если user-agent на задан
+		// если user-agent на задан, задаём дефолтный
 		if opts.UserAgent == "" {
-			req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+			req.Header.Set("User-Agent", "GoWebCrawler/1.0")
 		}
 		// если код ответа успешный, то выходим из цикла
 		resp, err = opts.HTTPClient.Do(req)
@@ -343,14 +282,78 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 		report.Error = err.Error()
 		return report
 	}
+
 	// освобождаем ресурсы
 	defer resp.Body.Close()
+
+	// добавляем информацию в отчёт
+	report.HTTPStatus = resp.StatusCode
+	report.Status = http.StatusText(resp.StatusCode)
 
 	// загружаем полученный html в goquery для поиска тегов
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		report.Error = fmt.Sprintf("loading error in goquery: %v", err)
+		return report
 	}
+	// находим показатели SEO и добавляем информацию в отчёт
+	report.SEO = parsSEO(doc)
+	// находим все ссылки на странице
+	links := linksSearch(doc, targetURL)
+	// проверяем каждую ссылку
+	var brokenLinks []BadLink
+	// создадим список битых ссылок
+	var wrongLinks []string
+	for _, link := range links {
+		// пропуск пустых ссылок или якорей (#)
+		if link == "" || strings.HasPrefix(link, "#") {
+			continue
+		}
+		res := CheckLink(link, opts)
+		emptyLink := BadLink{}
+		if res != emptyLink {
+			brokenLinks = append(brokenLinks, res)
+			wrongLinks = append(wrongLinks, res.URL)
+		}
+	}
+	// добавляем информацию в отчёт
+	report.BrokenLinks = brokenLinks
+	// находим ассеты на странице и добавляем информацию в отчёт
+	// assets, err := assetSearch(doc, targetURL, opts)
+	// if err != nil {
+	// 	report.Error = fmt.Sprintf("Error searching for assets: %v", err)
+	// }
+	// report.Assets = assets
+
+	// сохраняем только не битые ссылки
+	for _, link := range links {
+		if !slices.Contains(wrongLinks, link) {
+			report.LinksFound = append(report.LinksFound, link)
+		}
+	}
+	// находим все ссылки на ассеты
+	assetsUrl, err := sarchAssertUrl(doc, targetURL)
+	if err != nil {
+		report.Error = fmt.Sprintf("asset link search error: %v", err)
+	}
+	// анализируем все ссылки аcсетов идобавляем информацию в отчёт
+	cacheAssets := NewAssetCache()
+	for _, link := range assetsUrl {
+		asset, err := cacheAssets.ParseAsset(link, opts)
+		if err != nil {
+			report.Error = fmt.Sprintf("Error searching for assets: %v", err)
+		}
+		report.Assets = append(report.Assets, *asset)
+	}
+	// добавляем время выполнения парсинга страницы
+	currentTime := time.Now().Format(time.RFC3339)
+	report.DiscoveredAT = currentTime
+	// возвращаем отчёт о странице
+	return report
+}
+
+// функция парсинга SEO-показателей
+func parsSEO(doc *goquery.Document) SEO {
 	// создаём структуру для показателей SEO
 	var pageSE0 SEO
 	// парсим тег <title>
@@ -374,7 +377,11 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 	if h1 != "" {
 		pageSE0.HasH1 = true
 	}
-	// находим все ссылки на странице
+	return pageSE0
+}
+
+// функция поиска всех ссылок
+func linksSearch(doc *goquery.Document, link string) []string {
 	var links []string
 	// парсим тег <a>
 	doc.Find("a").Each(func(i int, s *goquery.Selection) {
@@ -382,45 +389,272 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 		href, exists := s.Attr("href")
 		if exists && href != "" {
 			// преобразуем относительные ссылки в абсолютные
-			baseURL, _ := url.Parse(targetURL)
+			baseURL, _ := url.Parse(link)
 			absURL := resolveURL(baseURL, href)
 			links = append(links, absURL)
 		}
 	})
-	// проверяем каждую ссылку
-	var brokenLinks []BadLink
-	// создадим список битых ссылок
-	var wrongLinks []string
-	for _, link := range links {
-		// пропуск пустых ссылок или якорей (#)
-		if link == "" || strings.HasPrefix(link, "#") {
+	return links
+}
+
+// функция преобразования относительной ссылки в абсолютную
+func resolveURL(base *url.URL, href string) string {
+	u, err := url.Parse(href)
+	if err != nil {
+		return href
+	}
+	return base.ResolveReference(u).String()
+}
+
+// функция проверки ссылки на 'битость'
+func CheckLink(urlStr string, opt Options) BadLink {
+	wrongLink := BadLink{}
+	client := &http.Client{
+		Timeout: opt.Timeout,
+	}
+	// сначала выполним HEAD запрос
+	req, err := http.NewRequest("HEAD", urlStr, nil)
+	if err != nil {
+		return BadLink{}
+	}
+	// выполняем запрос
+	respHead, err := client.Do(req)
+	if err != nil {
+		wrongLink.URL = urlStr
+		wrongLink.Error = fmt.Sprintf("%v", err)
+		return wrongLink
+	}
+	defer respHead.Body.Close()
+	// если сервер запретил HEAD, пробуем GET
+	if respHead.StatusCode == http.StatusMethodNotAllowed || respHead.StatusCode == http.StatusForbidden {
+		reqGet, err := http.NewRequest("GET", urlStr, nil)
+		if err != nil {
+			return BadLink{}
+		}
+		// выполняем запрос
+		respGet, err := client.Do(reqGet)
+		if err != nil {
+			wrongLink.URL = urlStr
+			wrongLink.Error = fmt.Sprintf("Get: '%s': %v", urlStr, err)
+			return wrongLink
+		}
+		defer respGet.Body.Close()
+		if respGet.StatusCode >= 400 {
+			wrongLink.URL = urlStr
+			wrongLink.Status = respGet.StatusCode
+		}
+		return wrongLink
+	}
+	if respHead.StatusCode >= 400 {
+		wrongLink.URL = urlStr
+		wrongLink.Status = respHead.StatusCode
+	}
+	return wrongLink
+}
+
+// функция фильтрации списка сайтов по домену
+func filterDomain(targetDomain string, links []string) []string {
+	var matchedURLs []string
+	for _, u := range links {
+		parsedURL, err := url.Parse(u)
+		if err != nil {
+			log.Printf("parsing error %s: %v\n", u, err)
 			continue
 		}
-		res := CheckLink(link)
-		emptyLink := BadLink{}
-		if res != emptyLink {
-			brokenLinks = append(brokenLinks, res)
-			wrongLinks = append(wrongLinks, res.URL)
+		// убедимся, что URL содержит хост
+		if parsedURL.Host == "" {
+			continue
+		}
+		// проверяем, совпадает ли домен или является ли поддоменом
+		host := strings.ToLower(parsedURL.Host)
+		if host == targetDomain || strings.Contains(host, targetDomain) {
+			matchedURLs = append(matchedURLs, u)
 		}
 	}
-	// сохраняем только не битые ссылки
-	for _, link := range links {
-		if !slices.Contains(wrongLinks, link) {
-			report.LinksFound = append(report.LinksFound, link)
+	return matchedURLs
+}
+
+// структура для хранения кэша ассетов
+type CacheAsset struct {
+	mu    sync.Mutex
+	cache map[string]*Asset
+}
+
+// функция создания нового экземпляра кэша
+func NewAssetCache() *CacheAsset {
+	return &CacheAsset{
+		cache: make(map[string]*Asset),
+	}
+}
+
+// функция парсинга ассетов по URL с поддержкой кэширования
+func (ca *CacheAsset) ParseAsset(targetURL string, opt Options) (*Asset, error) {
+	ca.mu.Lock()
+	// проверяем наличие ассета в кэше
+	if asset, exists := ca.cache[targetURL]; exists {
+		ca.mu.Unlock()
+		return asset, nil
+	}
+	ca.mu.Unlock()
+
+	// инициализируем базовый объект
+	asset := &Asset{
+		URL:  targetURL,
+		Type: detectType(targetURL),
+	}
+
+	client := &http.Client{
+		Timeout: opt.Timeout,
+	}
+
+	// создаём запрос
+	ctx := context.Background()
+	req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
+	if err != nil {
+		return asset, err
+	}
+
+	// выполняем запрос
+	resp, err := client.Do(req)
+	if err != nil {
+		asset.SizeBytes = 0
+		asset.Error = fmt.Sprintf("%v", err)
+		return ca.saveAndReturn(targetURL, asset), nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		asset.SizeBytes = 0
+		asset.StatusCode = resp.StatusCode
+		asset.Error = fmt.Sprintf("%v", err)
+		return ca.saveAndReturn(targetURL, asset), nil
+	}
+	asset.StatusCode = resp.StatusCode
+	// пробуем получить размер из заголовка Content-Length
+	contentLengthStr := resp.Header.Get("Content-Length")
+	if contentLengthStr != "" {
+		size, err := strconv.ParseInt(contentLengthStr, 10, 64)
+		if err == nil && size >= 0 {
+			asset.SizeBytes = size
+			return ca.saveAndReturn(targetURL, asset), nil
 		}
 	}
-	// формирование итогового отчета о странице
-	currentTime := time.Now().Format(time.RFC3339)
-	report = Page{
-		URL:          targetURL,
-		Depth:        currentDepth,
-		HTTPStatus:   resp.StatusCode,
-		Status:       http.StatusText(resp.StatusCode),
-		SEO:          pageSE0,
-		LinksFound:   links,
-		BrokenLinks:  brokenLinks,
-		DiscoveredAT: currentTime,
+
+	// если заголовка нет или он некорректен, читаем тело ответа
+	bytesBody, err := io.Copy(io.Discard, resp.Body)
+	if err != nil {
+		asset.SizeBytes = 0
+		asset.Error = fmt.Sprintf("failed to read body: %v", err)
+	} else {
+		asset.SizeBytes = bytesBody
 	}
-	// возвращаем отчёт о странице
-	return report
+	// возвращаем информацию об ассете
+	return ca.saveAndReturn(targetURL, asset), nil
+}
+
+// функция работы с кэшем ассетов - сохранение и получение ассета
+func (ac *CacheAsset) saveAndReturn(url string, asset *Asset) *Asset {
+	ac.mu.Lock()
+	defer ac.mu.Unlock()
+	ac.cache[url] = asset
+	return asset
+}
+
+// функция определения типа ассета по расширению в URL
+func detectType(targetURL string) string {
+	parsed, err := url.Parse(targetURL)
+	if err != nil {
+		return "other"
+	}
+	// извлекаем расширение и приводим к нижнему регистру
+	ext := strings.ToLower(path.Ext(parsed.Path))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico":
+		return "image"
+	case ".js", ".mjs", ".ts":
+		return "script"
+	case ".css":
+		return "style"
+	default:
+		return "other"
+	}
+}
+
+// функция поиска ссылок ассертов(image, script, style)
+func sarchAssertUrl(doc *goquery.Document, pageURL string) ([]string, error) {
+	var assetsUrl []string
+
+	baseURL, err := url.Parse(pageURL)
+	if err != nil {
+		return assetsUrl, fmt.Errorf("URL parsing error: %v", err)
+	}
+	// поиск изображений
+	doc.Find("img[src]").Each(func(i int, s *goquery.Selection) {
+		if src, ok := s.Attr("src"); ok {
+			absUrl := resolveURL(baseURL, src)
+			assetsUrl = append(assetsUrl, absUrl)
+		}
+	})
+
+	// поиск скриптов
+	doc.Find("script[src]").Each(func(i int, s *goquery.Selection) {
+		if src, ok := s.Attr("src"); ok {
+			absUrl := resolveURL(baseURL, src)
+			assetsUrl = append(assetsUrl, absUrl)
+		}
+	})
+
+	// поиск стилей
+	doc.Find("link[rel='stylesheet']").Each(func(i int, s *goquery.Selection) {
+		if href, ok := s.Attr("href"); ok {
+			absUrl := resolveURL(baseURL, href)
+			assetsUrl = append(assetsUrl, absUrl)
+		}
+	})
+
+	// поиск прочих ссылок на файлы
+	doc.Find("link[rel~='icon']").Each(func(i int, s *goquery.Selection) {
+		if href, ok := s.Attr("href"); ok {
+			absUrl := resolveURL(baseURL, href)
+			assetsUrl = append(assetsUrl, absUrl)
+		}
+	})
+	return assetsUrl, nil
+}
+
+// функция получения параметров ассета
+func checkAsset(baseURL *url.URL, assetURL, assetType string, opt Options) Asset {
+	client := &http.Client{
+		Timeout: opt.Timeout,
+	}
+
+	parsedURL, err := url.Parse(assetURL)
+	if err != nil {
+		return Asset{URL: assetURL, Type: assetType, Error: "incorrect URL"}
+	}
+
+	// преобразуем относительные URL в абсолютные
+	absURL := baseURL.ResolveReference(parsedURL).String()
+
+	// пробуем сделать запрос HEAD
+	req, err := http.NewRequest("HEAD", absURL, nil)
+	if err != nil {
+		return Asset{URL: absURL, Type: assetType, Error: "error creating request"}
+	}
+
+	// если HEAD заблокирован, делаем GET с range
+	resp, err := client.Do(req)
+	if err != nil {
+		return Asset{URL: absURL, Type: assetType, SizeBytes: 0, Error: err.Error()}
+	}
+	defer resp.Body.Close()
+
+	size := max(resp.ContentLength, 0)
+
+	return Asset{
+		URL:        absURL,
+		Type:       assetType,
+		StatusCode: resp.StatusCode,
+		SizeBytes:  size,
+	}
 }
