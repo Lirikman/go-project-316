@@ -69,7 +69,7 @@ type Asset struct {
 	Type       string `json:"type"`
 	StatusCode int    `json:"status_code"`
 	SizeBytes  int64  `json:"size_bytes"`
-	Error      string `json:"error"`
+	Error      string `json:"error,omitempty"`
 }
 
 // структура финального JSON-отчета
@@ -406,7 +406,7 @@ func resolveURL(base *url.URL, href string) string {
 
 // функция проверки ссылки на 'битость'
 func CheckLink(urlStr string, opt Options) BadLink {
-	wrongLink := BadLink{}
+	var wrongLink BadLink
 	client := &http.Client{
 		Timeout: opt.Timeout,
 	}
