@@ -1,7 +1,7 @@
 package main
 
 import (
-	"code"
+	code "code/crawler"
 	"context"
 	"encoding/json"
 	"fmt"
