@@ -1,7 +1,7 @@
 package main
 
 import (
-	code "code/crawler"
+	crawler "code/crawler"
 	"context"
 	"fmt"
 	"log"
@@ -113,7 +113,7 @@ func main() {
 				return fmt.Errorf("invalid value of the parameter 'indent-json', can only be true or false")
 			}
 			// получаем параметры запроса из флагов
-			opt := code.Options{
+			opt := crawler.Options{
 				URL:         url,
 				Depth:       cmd.Int("depth"),
 				Retries:     cmd.Int("retries"),
@@ -125,7 +125,7 @@ func main() {
 				IndentJSON:  cmd.Bool("indent-json"),
 			}
 			// выполняем запрос
-			res, err := code.Analyze(ctx, opt)
+			res, err := crawler.Analyze(ctx, opt)
 			// // выводим результаты
 			if err == nil {
 				fmt.Println(string(res))

@@ -1,4 +1,4 @@
-package code
+package crawler
 
 import (
 	"context"

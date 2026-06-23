@@ -1,7 +1,7 @@
 package main
 
 import (
-	code "code/crawler"
+	crawler "code/crawler"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -107,7 +107,7 @@ func TestCrawlerDepth(t *testing.T) {
 	// настраиваем подменный HTTP-клиент, перенаправляющий запросы
 	client := mockServer.Client()
 
-	testOpts := code.Options{
+	testOpts := crawler.Options{
 		HTTPClient:  client,
 		URL:         mockServer.URL,
 		UserAgent:   "TestBot/1.0",
@@ -117,12 +117,12 @@ func TestCrawlerDepth(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	jsonData, err := code.Analyze(ctx, testOpts)
+	jsonData, err := crawler.Analyze(ctx, testOpts)
 	if err != nil {
 		t.Fatalf("Analyze failed: %v", err)
 	}
 	// десериализуем результат для проверки структуры и контента
-	var results code.ReportResult
+	var results crawler.ReportResult
 	if err := json.Unmarshal(jsonData, &results); err != nil {
 		t.Fatalf("Failed to unmarshal JSON output: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestContextCancell(t *testing.T) {
 	}))
 	defer server.Close()
 
-	testOpts := code.Options{
+	testOpts := crawler.Options{
 		URL:         server.URL,
 		Depth:       2,
 		Retries:     1,
@@ -164,7 +164,7 @@ func TestContextCancell(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, err := code.Analyze(ctx, testOpts)
+	_, err := crawler.Analyze(ctx, testOpts)
 
 	// проверка на ошибку context deadline exceeded
 	if err == nil {
@@ -185,7 +185,7 @@ func TestCrawlerParsingPage(t *testing.T) {
 	// настраиваем подменный HTTP-клиент, перенаправляющий запросы
 	client := mockServer.Client()
 
-	testOpts := code.Options{
+	testOpts := crawler.Options{
 		HTTPClient:  client,
 		URL:         mockServer.URL,
 		UserAgent:   "TestBot/1.0",
@@ -195,12 +195,12 @@ func TestCrawlerParsingPage(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	jsonData, err := code.Analyze(ctx, testOpts)
+	jsonData, err := crawler.Analyze(ctx, testOpts)
 	if err != nil {
 		t.Fatalf("Analyze failed: %v", err)
 	}
 	// десериализуем результат для проверки структуры и контента
-	var results code.ReportResult
+	var results crawler.ReportResult
 	if err := json.Unmarshal(jsonData, &results); err != nil {
 		t.Fatalf("Failed to unmarshal JSON output: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestCrawlerStatusOK(t *testing.T) {
 	// настраиваем подменный HTTP-клиент, перенаправляющий запросы
 	client := mockServer.Client()
 
-	testOpts := code.Options{
+	testOpts := crawler.Options{
 		HTTPClient:  client,
 		URL:         mockServer.URL,
 		UserAgent:   "TestBot/1.0",
@@ -236,12 +236,12 @@ func TestCrawlerStatusOK(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	jsonData, err := code.Analyze(ctx, testOpts)
+	jsonData, err := crawler.Analyze(ctx, testOpts)
 	if err != nil {
 		t.Fatalf("Analyze failed: %v", err)
 	}
 	// десериализуем результат для проверки структуры и контента
-	var results code.ReportResult
+	var results crawler.ReportResult
 	if err := json.Unmarshal(jsonData, &results); err != nil {
 		t.Fatalf("Failed to unmarshal JSON output: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestCrawlerBrokenLink(t *testing.T) {
 	// настраиваем подменный HTTP-клиент, перенаправляющий запросы
 	client := mockServer.Client()
 
-	testOpts := code.Options{
+	testOpts := crawler.Options{
 		HTTPClient:  client,
 		URL:         mockServer.URL,
 		UserAgent:   "TestBot/1.0",
@@ -274,12 +274,12 @@ func TestCrawlerBrokenLink(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	jsonData, err := code.Analyze(ctx, testOpts)
+	jsonData, err := crawler.Analyze(ctx, testOpts)
 	if err != nil {
 		t.Fatalf("Analyze failed: %v", err)
 	}
 	// десериализуем результат для проверки структуры и контента
-	var results code.ReportResult
+	var results crawler.ReportResult
 	if err := json.Unmarshal(jsonData, &results); err != nil {
 		t.Fatalf("Failed to unmarshal JSON output: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestCrawlerSEO(t *testing.T) {
 	// настраиваем подменный HTTP-клиент, перенаправляющий запросы
 	client := mockServer.Client()
 
-	testOpts := code.Options{
+	testOpts := crawler.Options{
 		HTTPClient:  client,
 		URL:         mockServer.URL,
 		UserAgent:   "TestBot/1.0",
@@ -322,16 +322,16 @@ func TestCrawlerSEO(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	jsonData, err := code.Analyze(ctx, testOpts)
+	jsonData, err := crawler.Analyze(ctx, testOpts)
 	if err != nil {
 		t.Fatalf("Analyze failed: %v", err)
 	}
 	// десериализуем результат для проверки структуры и контента
-	var results code.ReportResult
+	var results crawler.ReportResult
 	if err := json.Unmarshal(jsonData, &results); err != nil {
 		t.Fatalf("Failed to unmarshal JSON output: %v", err)
 	}
-	wantAboutSEO := code.SEO{
+	wantAboutSEO := crawler.SEO{
 		HasTitle:       true,
 		Title:          "General page",
 		HasDescription: true,
@@ -345,7 +345,7 @@ func TestCrawlerSEO(t *testing.T) {
 		t.Errorf("SEO indicators were expected to be %v, but we got %v", wantAboutSEO, gotAboutSEO)
 	}
 
-	wantAboutTeamSEO := code.SEO{
+	wantAboutTeamSEO := crawler.SEO{
 		HasTitle:       false,
 		Title:          "",
 		HasDescription: false,
@@ -370,7 +370,7 @@ func TestRPSLimiter(t *testing.T) {
 	// настраиваем подменный HTTP-клиент, перенаправляющий запросы
 	client := mockServer.Client()
 
-	testOpts := code.Options{
+	testOpts := crawler.Options{
 		HTTPClient:  client,
 		URL:         mockServer.URL,
 		UserAgent:   "TestBot/1.0",
@@ -384,7 +384,7 @@ func TestRPSLimiter(t *testing.T) {
 	startTime := time.Now()
 
 	ctx := context.Background()
-	jsonData, err := code.Analyze(ctx, testOpts)
+	jsonData, err := crawler.Analyze(ctx, testOpts)
 	if err != nil {
 		t.Fatalf("Analyze failed: %v", err)
 	}
@@ -392,7 +392,7 @@ func TestRPSLimiter(t *testing.T) {
 	duration := time.Since(startTime)
 
 	// десериализуем результат для проверки структуры и контента
-	var results code.ReportResult
+	var results crawler.ReportResult
 	if err := json.Unmarshal(jsonData, &results); err != nil {
 		t.Fatalf("Failed to unmarshal JSON output: %v", err)
 	}
@@ -455,7 +455,7 @@ func TestRetriesAndDelay(t *testing.T) {
 	// фиксируем время начала анализа
 	startTime := time.Now()
 
-	testOpts := code.Options{
+	testOpts := crawler.Options{
 		URL:         server.URL,
 		Depth:       0,
 		Retries:     2,                     // задаём 2 попытки для повтора запроса
@@ -465,7 +465,7 @@ func TestRetriesAndDelay(t *testing.T) {
 		Concurrency: 1,
 	}
 
-	jsonData, err := code.Analyze(context.Background(), testOpts)
+	jsonData, err := crawler.Analyze(context.Background(), testOpts)
 	if err != nil {
 		t.Fatalf("Analyze failed: %v", err)
 	}
@@ -473,7 +473,7 @@ func TestRetriesAndDelay(t *testing.T) {
 	// рассчитаем продолжительность анализа
 	duration := time.Since(startTime)
 
-	var results code.ReportResult
+	var results crawler.ReportResult
 	if err := json.Unmarshal(jsonData, &results); err != nil {
 		t.Fatalf("Failed to unmarshal result: %v", err)
 	}
@@ -485,7 +485,7 @@ func TestRetriesAndDelay(t *testing.T) {
 	if len(results.Pages[0].Error) > 0 {
 		t.Errorf("Expected final success, but got errors: %v", results.Pages[0].Error)
 	}
-	wantPageSEO := code.SEO{
+	wantPageSEO := crawler.SEO{
 		HasTitle:       true,
 		Title:          "Test retries page",
 		HasDescription: true,
@@ -555,9 +555,9 @@ func TestParseAsset_AllConditions(t *testing.T) {
 
 	// Инициализируем клиент и кэш
 	client := server.Client()
-	cache := code.NewAssetCache()
+	cache := crawler.NewAssetCache()
 
-	testOpts := code.Options{
+	testOpts := crawler.Options{
 		HTTPClient:  client,
 		URL:         server.URL,
 		Depth:       2,
