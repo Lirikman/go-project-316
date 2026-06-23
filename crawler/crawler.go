@@ -155,7 +155,6 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 					u, _ := url.Parse(opts.URL)
 					hostName := u.Hostname()
 					domainUrls := filterDomain(hostName, pageRes.LinksFound)
-					fmt.Println("найденные ссылки: ", domainUrls)
 					mu.Lock()
 					for _, link := range domainUrls {
 						// проверяем запись о посещении для данного url
