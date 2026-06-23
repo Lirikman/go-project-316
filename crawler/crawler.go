@@ -39,11 +39,11 @@ type Page struct {
 	Depth        int       `json:"depth"`
 	HTTPStatus   int       `json:"http_status"`
 	Status       string    `json:"status"`
-	Error        string    `json:"error"`
+	Error        string    `json:"error,omitempty"`
 	SEO          SEO       `json:"seo"`
 	LinksFound   []string  `json:"-"`
-	BrokenLinks  []BadLink `json:"broken_links,omitempty"`
-	Assets       []Asset   `json:"assets,omitempty"`
+	BrokenLinks  []BadLink `json:"broken_links"`
+	Assets       []Asset   `json:"assets"`
 	DiscoveredAT string    `json:"discovered_at"`
 }
 
