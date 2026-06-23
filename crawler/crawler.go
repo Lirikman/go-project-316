@@ -155,6 +155,7 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 					u, _ := url.Parse(opts.URL)
 					hostName := u.Hostname()
 					domainUrls := filterDomain(hostName, pageRes.LinksFound)
+					fmt.Println("найденные ссылки: ", domainUrls)
 					mu.Lock()
 					for _, link := range domainUrls {
 						// проверяем запись о посещении для данного url
@@ -302,7 +303,11 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 
 	// добавляем информацию в отчёт
 	report.HTTPStatus = resp.StatusCode
-	report.Status = strings.ToLower(http.StatusText(resp.StatusCode))
+	if report.HTTPStatus == 0 {
+		report.Status = "error"
+	} else {
+		report.Status = strings.ToLower(http.StatusText(resp.StatusCode))
+	}
 
 	// загружаем полученный html в goquery для поиска тегов
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
@@ -398,9 +403,7 @@ func linksSearch(doc *goquery.Document, link string) []string {
 		if ok && href != "" {
 			// преобразуем относительные ссылки в абсолютные
 			baseURL, _ := url.Parse(link)
-			// удаляем слеш из окончания пути
-			baseURL.Path = strings.TrimSuffix(baseURL.Path, "/")
-			absURL := resolveURL(baseURL, href)
+			absURL := strings.TrimSuffix(resolveURL(baseURL, href), "/")
 			links = append(links, absURL)
 		}
 	})
