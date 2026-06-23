@@ -292,7 +292,7 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 
 	// добавляем информацию в отчёт
 	report.HTTPStatus = resp.StatusCode
-	report.Status = http.StatusText(resp.StatusCode)
+	report.Status = strings.ToLower(http.StatusText(resp.StatusCode))
 
 	// загружаем полученный html в goquery для поиска тегов
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
@@ -305,7 +305,7 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 	// находим все ссылки на странице
 	links := linksSearch(doc, targetURL)
 	// проверяем каждую ссылку
-	var brokenLinks []BadLink
+	brokenLinks := []BadLink{}
 	// создадим список битых ссылок
 	var wrongLinks []string
 	for _, link := range links {
@@ -334,6 +334,7 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 		report.Error = fmt.Sprintf("asset link search error: %v", err)
 	}
 	// анализируем все ссылки аcсетов и добавляем информацию в отчёт
+	report.Assets = []Asset{}
 	cacheAssets := NewAssetCache()
 	for _, link := range assetsUrl {
 		asset, err := cacheAssets.ParseAsset(link, opts)
@@ -405,7 +406,7 @@ func resolveURL(base *url.URL, href string) string {
 
 // функция проверки ссылки на 'битость'
 func CheckLink(urlStr string, opt Options) BadLink {
-	var wrongLink BadLink
+	wrongLink := BadLink{}
 	client := &http.Client{
 		Timeout: opt.Timeout,
 	}
@@ -591,7 +592,7 @@ func detectType(targetURL string) string {
 
 // функция поиска ссылок ассертов(image, script, style)
 func sarchAssertUrl(doc *goquery.Document, pageURL string) ([]string, error) {
-	var assetsUrl []string
+	assetsUrl := []string{}
 
 	baseURL, err := url.Parse(pageURL)
 	if err != nil {
