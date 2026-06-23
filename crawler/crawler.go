@@ -73,7 +73,7 @@ type Asset struct {
 }
 
 // структура финального JSON-отчета
-type ReportResult struct {
+type Report struct {
 	RootURL     string `json:"root_url"`
 	Depth       int    `json:"depth"`
 	GeneratedAt string `json:"generated_at"`
@@ -206,7 +206,7 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	// сбор результатов и формирование итогового отчёта
 	var reportBytes []byte
 	currentTime := time.Now().Format(time.RFC3339)
-	report := ReportResult{
+	report := Report{
 		RootURL:     opts.URL,
 		Depth:       opts.Depth,
 		GeneratedAt: currentTime,
