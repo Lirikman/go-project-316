@@ -49,9 +49,9 @@ type Page struct {
 
 // структура 'битых' ссылок
 type BadLink struct {
-	URL    string `json:"url"`
-	Status int    `json:"status_code,omitempty"`
-	Error  string `json:"error"`
+	URL        string `json:"url"`
+	StatusCode int    `json:"status_code,omitempty"`
+	Error      string `json:"error"`
 }
 
 // структуря для SEO-показателей страницы
@@ -444,7 +444,7 @@ func CheckLink(urlStr string, opt Options) BadLink {
 		}()
 		if respGet.StatusCode >= 400 {
 			wrongLink.URL = urlStr
-			wrongLink.Status = respGet.StatusCode
+			wrongLink.StatusCode = respGet.StatusCode
 			wrongLink.Error = http.StatusText(respGet.StatusCode)
 		}
 		return wrongLink
@@ -452,7 +452,7 @@ func CheckLink(urlStr string, opt Options) BadLink {
 	// проверяем статус код ответа
 	if respHead.StatusCode >= 400 {
 		wrongLink.URL = urlStr
-		wrongLink.Status = respHead.StatusCode
+		wrongLink.StatusCode = respHead.StatusCode
 		wrongLink.Error = http.StatusText(respHead.StatusCode)
 	}
 	return wrongLink

@@ -122,7 +122,7 @@ func TestCrawlerDepth(t *testing.T) {
 		t.Fatalf("Analyze failed: %v", err)
 	}
 	// десериализуем результат для проверки структуры и контента
-	var results crawler.ReportResult
+	var results crawler.Report
 	if err := json.Unmarshal(jsonData, &results); err != nil {
 		t.Fatalf("Failed to unmarshal JSON output: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestCrawlerParsingPage(t *testing.T) {
 		t.Fatalf("Analyze failed: %v", err)
 	}
 	// десериализуем результат для проверки структуры и контента
-	var results crawler.ReportResult
+	var results crawler.Report
 	if err := json.Unmarshal(jsonData, &results); err != nil {
 		t.Fatalf("Failed to unmarshal JSON output: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestCrawlerStatusOK(t *testing.T) {
 		t.Fatalf("Analyze failed: %v", err)
 	}
 	// десериализуем результат для проверки структуры и контента
-	var results crawler.ReportResult
+	var results crawler.Report
 	if err := json.Unmarshal(jsonData, &results); err != nil {
 		t.Fatalf("Failed to unmarshal JSON output: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestCrawlerBrokenLink(t *testing.T) {
 		t.Fatalf("Analyze failed: %v", err)
 	}
 	// десериализуем результат для проверки структуры и контента
-	var results crawler.ReportResult
+	var results crawler.Report
 	if err := json.Unmarshal(jsonData, &results); err != nil {
 		t.Fatalf("Failed to unmarshal JSON output: %v", err)
 	}
@@ -296,7 +296,7 @@ func TestCrawlerBrokenLink(t *testing.T) {
 	}
 	// проверяем статус код битой ссылки
 	statusNotFound := 404
-	statusCodeWrongURL := brokenLinks[0].Status
+	statusCodeWrongURL := brokenLinks[0].StatusCode
 	if statusCodeWrongURL != 404 {
 		t.Errorf("Expected to receive status code - %d, but received - %d", statusNotFound, statusCodeWrongURL)
 	}
@@ -327,7 +327,7 @@ func TestCrawlerSEO(t *testing.T) {
 		t.Fatalf("Analyze failed: %v", err)
 	}
 	// десериализуем результат для проверки структуры и контента
-	var results crawler.ReportResult
+	var results crawler.Report
 	if err := json.Unmarshal(jsonData, &results); err != nil {
 		t.Fatalf("Failed to unmarshal JSON output: %v", err)
 	}
@@ -392,7 +392,7 @@ func TestRPSLimiter(t *testing.T) {
 	duration := time.Since(startTime)
 
 	// десериализуем результат для проверки структуры и контента
-	var results crawler.ReportResult
+	var results crawler.Report
 	if err := json.Unmarshal(jsonData, &results); err != nil {
 		t.Fatalf("Failed to unmarshal JSON output: %v", err)
 	}
@@ -473,7 +473,7 @@ func TestRetriesAndDelay(t *testing.T) {
 	// рассчитаем продолжительность анализа
 	duration := time.Since(startTime)
 
-	var results crawler.ReportResult
+	var results crawler.Report
 	if err := json.Unmarshal(jsonData, &results); err != nil {
 		t.Fatalf("Failed to unmarshal result: %v", err)
 	}
