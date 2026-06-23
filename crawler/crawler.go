@@ -292,7 +292,6 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 	// если после всех попыток ошибка, то сохраняем её в отчёте
 	if err != nil {
 		report.Error = err.Error()
-		return report
 	}
 
 	// освобождаем ресурсы
@@ -302,7 +301,7 @@ func ParsPage(ctx context.Context, targetURL string, currentDepth int, opts Opti
 
 	// добавляем информацию в отчёт
 	report.HTTPStatus = resp.StatusCode
-	if report.HTTPStatus == 0 {
+	if resp.StatusCode == 0 {
 		report.Status = "error"
 	} else {
 		report.Status = strings.ToLower(http.StatusText(resp.StatusCode))
