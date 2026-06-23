@@ -182,6 +182,16 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 		go worker()
 	}
 
+	// проверка и нормализация url
+	parsedURL, err := url.Parse(opts.URL)
+	if err != nil {
+		return nil, fmt.Errorf("URL parsing error: %w", err)
+	}
+	// удаляем слеш из окончания пути
+	parsedURL.Path = strings.TrimSuffix(parsedURL.Path, "/")
+	// формируем итоговый URL
+	opts.URL = parsedURL.String()
+
 	// добавление стартового URL в список посещенных сайтов
 	visited[opts.URL] = true
 	wg.Add(1)
@@ -362,8 +372,8 @@ func parsSEO(doc *goquery.Document) SEO {
 		pageSE0.Title = title
 	}
 	// ищем тег <meta> с name = "description", и берем атрибут content
-	description, exists := doc.Find("meta[name='description']").Attr("content")
-	if exists {
+	description, ok := doc.Find("meta[name='description']").Attr("content")
+	if ok {
 		description = strings.TrimSpace(description)
 	}
 	if description != "" {
@@ -384,10 +394,12 @@ func linksSearch(doc *goquery.Document, link string) []string {
 	// парсим тег <a>
 	doc.Find("a").Each(func(i int, s *goquery.Selection) {
 		// получаем значение атрибута href
-		href, exists := s.Attr("href")
-		if exists && href != "" {
+		href, ok := s.Attr("href")
+		if ok && href != "" {
 			// преобразуем относительные ссылки в абсолютные
 			baseURL, _ := url.Parse(link)
+			// удаляем слеш из окончания пути
+			baseURL.Path = strings.TrimSuffix(baseURL.Path, "/")
 			absURL := resolveURL(baseURL, href)
 			links = append(links, absURL)
 		}
@@ -601,7 +613,7 @@ func sarchAssertUrl(doc *goquery.Document, pageURL string) ([]string, error) {
 	// поиск изображений
 	doc.Find("img[src]").Each(func(i int, s *goquery.Selection) {
 		if src, ok := s.Attr("src"); ok {
-			absUrl := resolveURL(baseURL, src)
+			absUrl := strings.TrimSuffix(resolveURL(baseURL, src), "/")
 			assetsUrl = append(assetsUrl, absUrl)
 		}
 	})
@@ -609,7 +621,7 @@ func sarchAssertUrl(doc *goquery.Document, pageURL string) ([]string, error) {
 	// поиск скриптов
 	doc.Find("script[src]").Each(func(i int, s *goquery.Selection) {
 		if src, ok := s.Attr("src"); ok {
-			absUrl := resolveURL(baseURL, src)
+			absUrl := strings.TrimSuffix(resolveURL(baseURL, src), "/")
 			assetsUrl = append(assetsUrl, absUrl)
 		}
 	})
@@ -617,7 +629,7 @@ func sarchAssertUrl(doc *goquery.Document, pageURL string) ([]string, error) {
 	// поиск стилей
 	doc.Find("link[rel='stylesheet']").Each(func(i int, s *goquery.Selection) {
 		if href, ok := s.Attr("href"); ok {
-			absUrl := resolveURL(baseURL, href)
+			absUrl := strings.TrimSuffix(resolveURL(baseURL, href), "/")
 			assetsUrl = append(assetsUrl, absUrl)
 		}
 	})
@@ -625,7 +637,7 @@ func sarchAssertUrl(doc *goquery.Document, pageURL string) ([]string, error) {
 	// поиск прочих ссылок на файлы
 	doc.Find("link[rel~='icon']").Each(func(i int, s *goquery.Selection) {
 		if href, ok := s.Attr("href"); ok {
-			absUrl := resolveURL(baseURL, href)
+			absUrl := strings.TrimSuffix(resolveURL(baseURL, href), "/")
 			assetsUrl = append(assetsUrl, absUrl)
 		}
 	})
