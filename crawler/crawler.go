@@ -168,7 +168,7 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 								tasksChan <- Task{url: l, depth: d}
 							}(link, t.depth+1)
 							// прерываем цикл после первой успешной обработки
-							break
+							// break
 						}
 					}
 					mu.Unlock()
