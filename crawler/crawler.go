@@ -366,7 +366,7 @@ func parsSEO(doc *goquery.Document) SEO {
 	// создаём структуру для показателей SEO
 	var pageSE0 SEO
 	// парсим тег <title>
-	title := doc.Find("title").Text()
+	title := doc.Find("title").First().Text()
 	title = strings.TrimSpace(title)
 	if title != "" {
 		pageSE0.HasTitle = true
@@ -382,7 +382,7 @@ func parsSEO(doc *goquery.Document) SEO {
 		pageSE0.Description = description
 	}
 	// парсим тег <h1>
-	h1 := doc.Find("h1").Text()
+	h1 := doc.Find("h1").First().Text()
 	if h1 != "" {
 		pageSE0.HasH1 = true
 	}
