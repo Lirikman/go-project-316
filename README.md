@@ -59,3 +59,43 @@ make test
 ```bash
 make run URL="https://example.com"
 ```
+
+### Example of work
+
+```bash
+./crawler --depth=10 https://example.com
+```
+## Answer:
+```json
+{
+  "root_url": "https://example.com",
+  "depth": 10,
+  "generated_at": "2026-06-25T22:28:46+07:00",
+  "pages": [
+    {
+      "url": "https://example.com",
+      "depth": 0,
+      "http_status": 200,
+      "status": "ok",
+      "seo": {
+        "has_title": true,
+        "title": "Example Domain",
+        "has_description": false,
+        "description": "",
+        "has_h1": true
+      },
+      "broken_links": [],
+      "assets": [
+        {
+          "url": "data:,",
+          "type": "other",
+          "status_code": 0,
+          "size_bytes": 0,
+          "error": "Get \"data:,\": unsupported protocol scheme \"data\""
+        }
+      ],
+      "discovered_at": "2026-06-25T22:28:46+07:00"
+    }
+  ]
+}
+```
