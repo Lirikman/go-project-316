@@ -36,6 +36,13 @@ GLOBAL OPTIONS:
 * Make
 * urfave/cli v3
 
+### Setup
+
+```bash
+git clone https://github.com/Lirikman/go-project-316.git
+cd go-project-316
+```
+
 ### Run build
 
 ```bash
