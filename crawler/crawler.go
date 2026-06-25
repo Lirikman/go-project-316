@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -227,6 +228,11 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	for res := range resultsChan {
 		report.Pages = append(report.Pages, res)
 	}
+
+	// сортируем pages по url по возрастанию
+	sort.Slice(report.Pages, func(i, j int) bool {
+		return report.Pages[i].URL < report.Pages[j].URL
+	})
 
 	// cериалиализация отчета в JSON с заданным параметром indent-json
 	var serialErr error
