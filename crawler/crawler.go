@@ -424,8 +424,9 @@ func resolveURL(base *url.URL, href string) string {
 // функция проверки ссылки на 'битость'
 func CheckLink(urlStr string, opt Options) BadLink {
 	var wrongLink BadLink
-	client := &http.Client{
-		Timeout: opt.Timeout,
+	client := opt.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: opt.Timeout}
 	}
 	// сначала выполним HEAD запрос
 	req, err := http.NewRequest("HEAD", urlStr, nil)
@@ -527,10 +528,10 @@ func (ca *CacheAsset) ParseAsset(targetURL string, opt Options) (*Asset, error) 
 		Type: detectType(targetURL),
 	}
 
-	client := &http.Client{
-		Timeout: opt.Timeout,
+	client := opt.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: opt.Timeout}
 	}
-
 	// создаём запрос
 	ctx := context.Background()
 	req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
