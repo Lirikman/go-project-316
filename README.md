@@ -12,23 +12,23 @@ USAGE:
 
 GLOBAL OPTIONS:
 
-   --depth int          crawl depth (default: 10)
+   -- **depth (int)** : crawl depth (default: 10)
    
-   --retries int        number of retries for failed requests (default: 1)
+   -- **retries (int)** : number of retries for failed requests (default: 1)
    
-   --delay duration     delay between requests (example: 200ms, 1s) (default: 0s)
+   -- **delay (duration)** : delay between requests (example: 200ms, 1s) (default: 0s)
    
-   --timeout duration   per-request timeout (default: 15s)
+   -- **timeout (duration)** : per-request timeout (default: 15s)
    
-   --rps int            limit requests per second (overrides delay) (default: 0)
+   -- **rps (int)** : limit requests per second (overrides delay) (default: 0)
    
-   --user-agent string  custom user agent
+   -- **user-agent (string)** : custom user agent
    
-   --workers int        number of concurrent workers (default: 4)
+   -- **workers (int)** : number of concurrent workers (default: 4)
    
-   --indent-json        formatting output in json
+   -- **indent-json (bool)** : formatting output in json
    
-   --help, -h           show help
+   -- **help, -h** : show help
 
 ### Requirements
 
