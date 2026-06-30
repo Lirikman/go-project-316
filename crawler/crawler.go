@@ -151,7 +151,7 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 				resultsChan <- pageRes
 
 				// проверяем параметр depth и добавляем новые ссылки в очередь
-				if t.depth < opts.Depth && pageRes.Error == "" {
+				if t.depth+1 < opts.Depth && pageRes.Error == "" {
 					// фильтруем полученные ссылки по домену
 					u, _ := url.Parse(opts.URL)
 					hostName := u.Hostname()
