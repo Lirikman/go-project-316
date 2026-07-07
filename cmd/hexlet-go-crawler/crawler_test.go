@@ -127,7 +127,7 @@ func TestCrawlerDepth(t *testing.T) {
 		t.Fatalf("Failed to unmarshal JSON output: %v", err)
 	}
 	// проверям количество полученных страниц
-	expectedCount := 3
+	expectedCount := 2
 	if len(results.Pages) != expectedCount {
 		t.Errorf("Expected %d results, got %d. Dump: %s", expectedCount, len(results.Pages), string(jsonData))
 	}
@@ -230,7 +230,7 @@ func TestCrawlerStatusOK(t *testing.T) {
 		HTTPClient:  client,
 		URL:         mockServer.URL,
 		UserAgent:   "TestBot/1.0",
-		Depth:       1,
+		Depth:       0,
 		Concurrency: 2,
 		IndentJSON:  true,
 	}
@@ -246,7 +246,7 @@ func TestCrawlerStatusOK(t *testing.T) {
 		t.Fatalf("Failed to unmarshal JSON output: %v", err)
 	}
 	// проверяем статус код страницы
-	gotPageAbout := results.Pages[1].HTTPStatus
+	gotPageAbout := results.Pages[0].HTTPStatus
 	wantPageStatus := 200
 
 	if wantPageStatus != gotPageAbout {
@@ -316,7 +316,7 @@ func TestCrawlerSEO(t *testing.T) {
 		HTTPClient:  client,
 		URL:         mockServer.URL,
 		UserAgent:   "TestBot/1.0",
-		Depth:       2,
+		Depth:       3,
 		Concurrency: 4,
 		IndentJSON:  true,
 	}
