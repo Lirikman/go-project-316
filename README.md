@@ -1,9 +1,9 @@
-## Hexlet go crawler
+# Hexlet go crawler
 
-### Hexlet tests and linter status:
+## Hexlet tests and linter status:
 [![Actions Status](https://github.com/Lirikman/go-project-316/actions/workflows/hexlet-check.yml/badge.svg)](https://github.com/Lirikman/go-project-316/actions)
 
-### Description
+## Description
 Analyze a website structure
 
 USAGE:
@@ -29,49 +29,49 @@ GLOBAL OPTIONS:
    
    -- **help, -h** : show help
 
-### Requirements
+## Requirements
 
 * Go 1.26
 * Make
 * urfave/cli v3
 
-### Setup
+## Setup
 
 ```bash
 git clone https://github.com/Lirikman/go-project-316.git
 cd go-project-316
 ```
 
-### Run build
+## Run build
 
 ```bash
 make build
 ```
 
-### Run golangci-lint 
+## Run golangci-lint 
 
 ```bash
 make lint
 ```
 
-### Run tests
+## Run tests
 
 ```bash
 make test
 ```
 
-### Running a query
+## Running a query
 
 ```bash
 make run URL="https://example.com"
 ```
 
-### Example of work
+## Example of work
 
 ```bash
 ./crawler --depth=10 https://example.com
 ```
-#### Answer:
+### Answer:
 ```json
 {
   "root_url": "https://example.com",
