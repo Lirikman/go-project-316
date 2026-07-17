@@ -4,7 +4,6 @@
 [![Actions Status](https://github.com/Lirikman/go-project-316/actions/workflows/hexlet-check.yml/badge.svg)](https://github.com/Lirikman/go-project-316/actions)
 
 ### Description
-
 Analyze a website structure
 
 USAGE:
